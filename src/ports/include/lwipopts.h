@@ -2,6 +2,12 @@
  * @file
  *
  * lwIP Options Configuration
+ *
+ * 本文件为 candy 项目定制版（在上游默认配置基础上做增量修改）：
+ * 上游（Bepartofyou/lwip）自带的 lwipopts.h 是按 hev-socks5-tunnel 场景
+ * 配置的（IPv6=1、MEM_CUSTOM_ALLOCATOR + hev_malloc、TCP_MSS=8191 等）。
+ * candy 直接依赖本 fork，这里在保留上游各配置项的前提下，仅调整 candy 所需
+ * 的开关与数值，并补充上游未定义的选项，方便逐处对比每一项改动。
  */
 
 /*
@@ -69,7 +75,8 @@
  * (the array of lwip-internal cyclic timers is still provided)
  * (check NO_SYS_NO_TIMERS for compatibility to old versions)
  */
-#define LWIP_TIMERS                     0
+/* [candy] 由 0 改为 1：candy 需要 lwip 内部周期定时器（TCP 重传/超时等）。 */
+#define LWIP_TIMERS                     1
 
 /**
  * LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS: Don't provides byte order
@@ -97,7 +104,9 @@
  * implementation instead of the lwip internal allocator. Can save code size if
  * you already use it. If enabled, you have to define those functions:
  */
-#define MEM_CUSTOM_ALLOCATOR            1
+/* [candy] 由 1 改为 0：candy 不使用 hev 自定义分配器，改用下方 libc malloc。
+ * 下面 hev_* 声明与 MEM_CUSTOM_* 宏在此开关为 0 时不会被引用，保留以便对比。 */
+#define MEM_CUSTOM_ALLOCATOR            0
 
 void hev_free (void *ptr);
 #define MEM_CUSTOM_FREE hev_free
@@ -107,6 +116,10 @@ void *hev_malloc (size_t size);
 
 void *hev_calloc (size_t nmemb, size_t size);
 #define MEM_CUSTOM_CALLOC hev_calloc
+
+/* [candy] 新增：改用 libc 的 malloc/free，并让内存池也走 malloc。 */
+#define MEM_LIBC_MALLOC                 1
+#define MEMP_MEM_MALLOC                 1
 
 /*
    ------------------------------------------------
@@ -118,7 +131,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * If the application sends a lot of data out of ROM (or other static memory),
  * this should be set high.
  */
-#define MEMP_NUM_PBUF                   8192
+/* [candy] 由 8192 改为 4096。 */
+#define MEMP_NUM_PBUF                   4096
 
 /**
  * MEMP_NUM_RAW_PCB: Number of raw connection PCBs
@@ -131,7 +145,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * per active UDP "connection".
  * (requires the LWIP_UDP option)
  */
-#define MEMP_NUM_UDP_PCB                1024
+/* [candy] 由 1024 改为 4096。 */
+#define MEMP_NUM_UDP_PCB                4096
 
 /**
  * MEMP_NUM_TCP_PCB: the number of simulatenously active TCP connections.
@@ -149,7 +164,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * MEMP_NUM_TCP_SEG: the number of simultaneously queued TCP segments.
  * (requires the LWIP_TCP option)
  */
-#define MEMP_NUM_TCP_SEG                8192
+/* [candy] 由 8192 改为 4096。 */
+#define MEMP_NUM_TCP_SEG                4096
 
 /**
  * MEMP_NUM_REASSDATA: the number of simultaneously IP packets queued for
@@ -163,13 +179,16 @@ void *hev_calloc (size_t nmemb, size_t size);
  * their destination address) to finish.
  * (requires the ARP_QUEUEING option)
  */
-#define MEMP_NUM_ARP_QUEUE              2
+/* [candy] 由 2 改为 30：candy 未定义此项，对齐 lwip 默认值 30。 */
+#define MEMP_NUM_ARP_QUEUE              30
 
 /**
  * MEMP_NUM_SYS_TIMEOUT: the number of simulateously active timeouts.
  * (requires NO_SYS==0)
  */
-#define MEMP_NUM_SYS_TIMEOUT            8
+/* [candy] 由 8 改为 2：candy 未定义此项，对齐 lwip 默认值（本配置下
+ * LWIP_NUM_SYS_TIMEOUT_INTERNAL = LWIP_TCP(1)+IP_REASSEMBLY(1) = 2）。 */
+#define MEMP_NUM_SYS_TIMEOUT            2
 
 /**
  * MEMP_NUM_NETBUF: the number of struct netbufs.
@@ -181,7 +200,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * MEMP_NUM_NETCONN: the number of struct netconns.
  * (only needed if you use the sequential API, like api_lib.c)
  */
-#define MEMP_NUM_NETCONN               32
+/* [candy] 由 32 改为 4：candy 未定义此项，对齐 lwip 默认值 4。 */
+#define MEMP_NUM_NETCONN                4
 
 /**
  * MEMP_NUM_TCPIP_MSG_API: the number of struct tcpip_msg, which are used
@@ -200,13 +220,17 @@ void *hev_calloc (size_t nmemb, size_t size);
 /**
  * PBUF_POOL_SIZE: the number of buffers in the pbuf pool.
  */
-#define PBUF_POOL_SIZE                  32
+/* [candy] 由 32 改为 0：内存池走 malloc（见 MEMP_MEM_MALLOC），无需预分配 pbuf 池。 */
+#define PBUF_POOL_SIZE                  0
 
 /*
    ---------------------------------
    ---------- ARP options ----------
    ---------------------------------
 */
+/* [candy] 新增：candy 工作在 IP 层，不走以太网链路层。 */
+#define LWIP_ETHERNET                   0
+
 /**
  * LWIP_ARP==1: Enable ARP functionality.
  */
@@ -250,7 +274,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * a fragmented IP packet waits for all fragments to arrive. If not all fragments arrived
  * in this time, the whole packet is discarded.
  */
-#define IP_REASS_MAXAGE                 3
+/* [candy] 由 3 改为 15：candy 未定义此项，对齐 lwip 默认值 15。 */
+#define IP_REASS_MAXAGE                 15
 
 /**
  * IP_REASS_MAX_PBUFS: Total maximum amount of pbufs waiting to be reassembled.
@@ -258,7 +283,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * PBUF_POOL_SIZE > IP_REASS_MAX_PBUFS so that the stack is still able to receive
  * packets even if the maximum amount of fragments is enqueued for reassembly!
  */
-#define IP_REASS_MAX_PBUFS              4
+/* [candy] 由 4 改为 10：candy 未定义此项，对齐 lwip 默认值 10。 */
+#define IP_REASS_MAX_PBUFS              10
 
 /**
  * IP_FRAG_USES_STATIC_BUF==1: Use a static MTU-sized buffer for IP
@@ -277,10 +303,14 @@ void *hev_calloc (size_t nmemb, size_t size);
    ---------- IPv6 options ---------------
    ---------------------------------------
 */
+/* [candy] 新增：显式开启 IPv4。 */
+#define LWIP_IPV4                       1
+
 /**
  * LWIP_IPV6==1: Enable IPv6 module.
  */
-#define LWIP_IPV6                       1
+/* [candy] 由 1 改为 0：candy 只处理 IPv4。 */
+#define LWIP_IPV6                       0
 
 #ifdef __LP64__
 #define IPV6_FRAG_COPYHEADER            1
@@ -386,7 +416,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * when opening a connection. For the transmit size, this MSS sets
  * an upper limit on the MSS advertised by the remote host.
  */
-#define TCP_MSS                         8191
+/* [candy] 由 8191 改为 1460：匹配标准以太网 MTU 1500 下的 TCP MSS。 */
+#define TCP_MSS                         1460
 
 /**
  * TCP_WND: The size of a TCP window.  This must be at least
@@ -395,19 +426,25 @@ void *hev_calloc (size_t nmemb, size_t size);
  * with scaling applied. Maximum window value in the TCP header
  * will be TCP_WND >> TCP_RCV_SCALE
  */
-#define TCP_WND                         (8 * TCP_MSS)
+/* [candy] 由 (8 * TCP_MSS) 改为 (32 * TCP_MSS)。 */
+#define TCP_WND                         (32 * TCP_MSS)
 
 /**
  * TCP_SND_BUF: TCP sender buffer space (bytes).
  * To achieve good performance, this should be at least 2 * TCP_MSS.
  */
-#define TCP_SND_BUF                     (8 * TCP_MSS)
+/* [candy] 由 (8 * TCP_MSS) 改为 (32 * TCP_MSS)。 */
+#define TCP_SND_BUF                     (32 * TCP_MSS)
 
 /**
  * TCP_SND_QUEUELEN: TCP sender buffer space (pbufs). This must be at least
  * as much as (2 * TCP_SND_BUF/TCP_MSS) for things to work.
  */
-#define TCP_SND_QUEUELEN                ((128 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS))
+/* [candy] 简化公式为 ((4 * TCP_SND_BUF) / TCP_MSS)。 */
+#define TCP_SND_QUEUELEN                ((4 * TCP_SND_BUF) / TCP_MSS)
+
+/* [candy] 新增：开启乱序段缓存，改善丢包/乱序时的吞吐。 */
+#define TCP_QUEUE_OOSEQ                 1
 
 /*
    ----------------------------------
@@ -419,7 +456,8 @@ void *hev_calloc (size_t nmemb, size_t size);
  * link level header. The default is 14, the standard value for
  * Ethernet.
  */
-#define PBUF_LINK_HLEN                  16
+/* [candy] 由 16 改为 14：candy 未定义此项，对齐 lwip 默认值 14（14 + ETH_PAD_SIZE, ETH_PAD_SIZE 默认 0）。 */
+#define PBUF_LINK_HLEN                  14
 
 /**
  * PBUF_POOL_BUFSIZE: the size of each pbuf in the pbuf pool. The default is
@@ -439,6 +477,9 @@ void *hev_calloc (size_t nmemb, size_t size);
  */
 #define LWIP_HAVE_LOOPIF                0
 
+/* [candy] 新增：关闭 netif 回环。 */
+#define LWIP_NETIF_LOOPBACK             0
+
 /*
    ----------------------------------------------
    ---------- Sequential layer options ----------
@@ -449,6 +490,17 @@ void *hev_calloc (size_t nmemb, size_t size);
  * LWIP_NETCONN==1: Enable Netconn API (require to use api_lib.c)
  */
 #define LWIP_NETCONN                    0
+
+/*
+   ----------------------------------
+   ---------- NETIF options ---------
+   ----------------------------------
+*/
+/* [candy] 新增：candy 不使用 netif 高层 API 与状态/链路/主机名回调。 */
+#define LWIP_NETIF_API                  0
+#define LWIP_NETIF_STATUS_CALLBACK      0
+#define LWIP_NETIF_LINK_CALLBACK        0
+#define LWIP_NETIF_HOSTNAME             0
 
 /*
    ------------------------------------
@@ -463,7 +515,8 @@ void *hev_calloc (size_t nmemb, size_t size);
 /**
  * SO_REUSE==1: Enable SO_REUSEADDR
  */
-#define SO_REUSE                        1
+/* [candy] 由 1 改为 0：candy 未定义此项，对齐 lwip 默认值 0。 */
+#define SO_REUSE                        0
 
 /*
    ----------------------------------------
@@ -475,42 +528,56 @@ void *hev_calloc (size_t nmemb, size_t size);
  */
 #define LWIP_STATS                      0
 
+/* [candy] 新增：关闭统计信息显示。 */
+#define LWIP_STATS_DISPLAY              0
+
 /*
    --------------------------------------
    ---------- Checksum options ----------
    --------------------------------------
 */
 
+/* [candy] 新增：由 lwip 软件生成 IP/TCP/UDP 校验和。 */
+#define CHECKSUM_GEN_IP                 1
+#define CHECKSUM_GEN_TCP                1
+#define CHECKSUM_GEN_UDP                1
+
 /**
  * CHECKSUM_CHECK_IP==1: Check checksums in software for incoming IP packets.
  */
-#define CHECKSUM_CHECK_IP               0
+/* [candy] 由 0 改为 1：软件校验入站 IP 校验和。 */
+#define CHECKSUM_CHECK_IP               1
 
 /**
  * CHECKSUM_CHECK_UDP==1: Check checksums in software for incoming UDP packets.
  */
-#define CHECKSUM_CHECK_UDP              0
+/* [candy] 由 0 改为 1：软件校验入站 UDP 校验和。 */
+#define CHECKSUM_CHECK_UDP              1
 
 /**
  * CHECKSUM_CHECK_TCP==1: Check checksums in software for incoming TCP packets.
  */
-#define CHECKSUM_CHECK_TCP              0
+/* [candy] 由 0 改为 1：软件校验入站 TCP 校验和。 */
+#define CHECKSUM_CHECK_TCP              1
 
 /**
  * CHECKSUM_CHECK_ICMP==1: Check checksums in software for incoming ICMP packets.
  */
-#define CHECKSUM_CHECK_ICMP             0
+/* [candy] 由 0 改为 1：candy 未定义此项，对齐 lwip 默认值 1。 */
+#define CHECKSUM_CHECK_ICMP             1
 
 /**
  * CHECKSUM_CHECK_ICMP6==1: Check checksums in software for incoming ICMPv6 packets
  */
-#define CHECKSUM_CHECK_ICMP6            0
+/* [candy] 由 0 改为 1：candy 未定义此项，对齐 lwip 默认值 1。 */
+#define CHECKSUM_CHECK_ICMP6            1
 
 /**
  * LWIP_CHECKSUM_ON_COPY==1: Calculate checksum when copying data from
  * application buffers to pbufs.
  */
-#define LWIP_CHECKSUM_ON_COPY           1
+/* [candy] 由 1 改为 0：candy 未定义此项，对齐 lwip 默认值 0。 */
+#define LWIP_CHECKSUM_ON_COPY           0
 
 /*
    ---------------------------------------
@@ -524,5 +591,13 @@ void *hev_calloc (size_t nmemb, size_t size);
 void sys_check_core_locking(void);
 #define LWIP_ASSERT_CORE_LOCKED()  sys_check_core_locking()
 #endif
+
+/*
+   ---------------------------------------
+   ---------- Debugging options ----------
+   ---------------------------------------
+*/
+/* [candy] 新增：关闭调试输出。 */
+#define LWIP_DEBUG                      0
 
 #endif /* LWIP_LWIPOPTS_H */
